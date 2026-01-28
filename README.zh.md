@@ -3,13 +3,13 @@
 ![version](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffawdlstty%2Fappentry%2Fmain%2F/appentry/Cargo.toml&query=package.version&label=version)
 ![status](https://img.shields.io/github/actions/workflow/status/fawdlstty/appentry/rust.yml)
 
-English | [简体中文](README.zh.md)
+[English](README.md) | 简体中文
 
-A minimalist command-line argument parsing library
+极简的命令行参数解析库
 
-# Document
+# 文档
 
-Hello World:
+入门示例:
 
 ```rust
 #[appentry::appentry]
@@ -35,7 +35,7 @@ $ myapp -x 1 -y 2
 */
 ```
 
-Multiple methods and docs:
+多方法及文档说明示例:
 
 ```rust
 /// Print the application version
