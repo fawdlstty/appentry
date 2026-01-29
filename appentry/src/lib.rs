@@ -108,6 +108,12 @@ pub fn get_arg_from_name<T: std::str::FromStr + Default + 'static>(
 }
 
 pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
+    let arg0 = match (arg0.rfind('/'), arg0.rfind('\\')) {
+        (Some(a), None) => &arg0[a + 1..],
+        (None, Some(b)) => &arg0[b + 1..],
+        (Some(a), Some(b)) => &arg0[a.max(b) + 1..],
+        (None, None) => arg0,
+    };
     let width = methods
         .iter()
         .map(|m| {
@@ -182,7 +188,7 @@ pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
     }
 }
 
-pub fn appentry_dispatch() -> anyhow::Result<()> {
+pub fn dispatch() -> anyhow::Result<()> {
     let mut methods: Vec<_> = inventory::iter::<FunctionInfo>.into_iter().collect();
     let mut args: Vec<String> = std::env::args().collect();
     let arg0 = args.remove(0);

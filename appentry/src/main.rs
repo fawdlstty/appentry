@@ -18,14 +18,13 @@ fn version() {
 ///
 /// * `x` - The first number to add
 /// * `y` -
-#[appentry::appentry(["-p", "--plus"])]
-fn plus(x: i32, y: i32) -> anyhow::Result<()> {
+#[appentry::appentry(["-a", "--add"])]
+fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
-    appentry::appentry_dispatch()?;
-
+    appentry::dispatch()?;
     Ok(())
 }
