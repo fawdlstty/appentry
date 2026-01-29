@@ -5,7 +5,7 @@
 
 A minimalist command-line argument parsing library
 
-# Document
+# Examples
 
 Hello World:
 
