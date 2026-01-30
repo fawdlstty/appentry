@@ -6,7 +6,6 @@ use std::collections::HashMap;
 #[derive(Copy, Clone)]
 pub struct FunctionInfo {
     pub name: &'static str,
-    pub alias: &'static [&'static str],
     pub desc: Option<&'static str>,
     pub args: &'static [ArgInfo],
     pub method: fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>,
@@ -15,13 +14,11 @@ pub struct FunctionInfo {
 impl FunctionInfo {
     pub const fn new(
         name: &'static str,
-        alias: &'static [&'static str],
         args: &'static [ArgInfo],
         method: fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>,
     ) -> Self {
         Self {
             name,
-            alias,
             desc: None,
             args,
             method,
@@ -30,14 +27,12 @@ impl FunctionInfo {
 
     pub const fn new_with_desc(
         name: &'static str,
-        alias: &'static [&'static str],
         desc: Option<&'static str>,
         args: &'static [ArgInfo],
         method: fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>,
     ) -> Self {
         Self {
             name,
-            alias,
             desc,
             args,
             method,
@@ -107,7 +102,7 @@ pub fn get_arg_from_name<T: std::str::FromStr + Default + 'static>(
     }
 }
 
-pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
+pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: bool) {
     let arg0 = match (arg0.rfind('/'), arg0.rfind('\\')) {
         (Some(a), None) => &arg0[a + 1..],
         (None, Some(b)) => &arg0[b + 1..],
@@ -121,9 +116,12 @@ pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
                 .iter()
                 .map(|arg| {
                     let lcname = arg.name.to_lowercase();
-                    let lcch = arg.name.chars().next().unwrap();
                     let lctyname = arg.type_name.to_lowercase();
-                    format!("    -{lcch}, --{lcname} <{lctyname}>").len()
+                    let lcch = arg.name.chars().next().unwrap();
+                    match enable_short {
+                        true => format!("    -{lcch}|--{lcname} <{lctyname}>").len(),
+                        false => format!("    --{lcname} <{lctyname}>").len(),
+                    }
                 })
                 .max()
                 .unwrap_or(0)
@@ -144,9 +142,12 @@ pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
                 println!("Options:");
                 for arg in method.args.iter() {
                     let lcname = arg.name.to_lowercase();
-                    let lcch = arg.name.chars().next().unwrap();
                     let lctyname = arg.type_name.to_lowercase();
-                    let base = format!("    -{lcch}, --{lcname} <{lctyname}>");
+                    let lcch = arg.name.chars().next().unwrap();
+                    let base = match enable_short {
+                        true => format!("    -{lcch}|--{lcname} <{lctyname}>"),
+                        false => format!("    --{lcname} <{lctyname}>"),
+                    };
                     if let Some(desc) = arg.desc {
                         println!("{base:width$} {desc}");
                     } else {
@@ -158,23 +159,27 @@ pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
         }
         _ => {
             for method in methods {
-                let name = match method.alias.is_empty() {
-                    true => method.name.to_string(),
-                    false => method.alias.join("/"),
-                };
                 if let Some(desc) = method.desc {
                     println!("Desc:  {desc}");
                 }
+                let lcch = method.name.chars().next().unwrap();
+                let method_name = match enable_short {
+                    true => format!("-{lcch}|--{}", method.name),
+                    false => format!("--{}", method.name),
+                };
                 if method.args.is_empty() {
-                    println!("Usage: {arg0} {name}");
+                    println!("Usage: {arg0} {method_name}");
                 } else {
-                    println!("Usage: {arg0} {name} [Options]");
+                    println!("Usage: {arg0} {method_name} [Options]");
                     println!("Options:");
                     for arg in method.args.iter() {
                         let lcname = arg.name.to_lowercase();
                         let lcch = arg.name.chars().next().unwrap();
                         let lctyname = arg.type_name.to_lowercase();
-                        let base = format!("    -{lcch}, --{lcname} <{lctyname}>");
+                        let base = match enable_short {
+                            true => format!("    -{lcch}|--{lcname} <{lctyname}>"),
+                            false => format!("    --{lcname} <{lctyname}>"),
+                        };
                         if let Some(desc) = arg.desc {
                             println!("{base:width$} {desc}");
                         } else {
@@ -188,14 +193,14 @@ pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>) {
     }
 }
 
-pub fn dispatch() -> anyhow::Result<()> {
+pub fn dispatch(enable_short: bool) -> anyhow::Result<()> {
     let mut methods: Vec<_> = inventory::iter::<FunctionInfo>.into_iter().collect();
     let mut args: Vec<String> = std::env::args().collect();
     let arg0 = args.remove(0);
     if let Some(arg) = args.first()
         && arg == "--help"
     {
-        appentry_help(&arg0, &methods);
+        appentry_help(&arg0, &methods, enable_short);
         return Ok(());
     }
 
@@ -206,8 +211,8 @@ pub fn dispatch() -> anyhow::Result<()> {
             let name = args.remove(0);
             let mut item = None;
             for method in methods.iter() {
-                if method.alias.contains(&name.as_str())
-                    || (method.alias.is_empty() && method.name == name)
+                if (&name[..2] == "--" && &name[2..] == method.name)
+                    || (enable_short && &name[..1] == "-" && &name[1..] == &method.name[..1])
                 {
                     item = Some(method);
                     break;
@@ -216,7 +221,7 @@ pub fn dispatch() -> anyhow::Result<()> {
             match item {
                 Some(item) => item,
                 None => {
-                    appentry_help(&arg0, &methods);
+                    appentry_help(&arg0, &methods, enable_short);
                     return Ok(());
                 }
             }

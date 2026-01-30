@@ -3,35 +3,13 @@ use proc_macro2::Span;
 use quote::quote;
 
 #[proc_macro_attribute]
-pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input_fn = syn::parse_macro_input!(input as syn::ItemFn);
     let fn_sig = &input_fn.sig;
 
     // Extract function name
     let fn_name = fn_sig.ident.to_string();
     let fn_ident = fn_sig.ident.clone();
-
-    // Parse the arguments to extract aliases
-    let alias_exprs: Vec<String> = if !args.is_empty() {
-        let parsed_args = syn::parse_macro_input!(args as syn::ExprArray);
-        parsed_args
-            .elems
-            .iter()
-            .filter_map(|expr| {
-                if let syn::Expr::Lit(syn::ExprLit {
-                    lit: syn::Lit::Str(lit_str),
-                    ..
-                }) = expr
-                {
-                    Some(lit_str.value())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    } else {
-        vec![fn_name.to_lowercase()] // Default alias is lowercase function name
-    };
 
     // Extract argument information
     let mut arg_names = Vec::new();
@@ -169,13 +147,6 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    // Create static array literals for aliases
-    let alias_literals: Vec<syn::LitStr> = alias_exprs
-        .iter()
-        .map(|alias| syn::LitStr::new(alias, Span::call_site()))
-        .collect();
-    let alias_count = alias_literals.len();
-
     let expanded = quote! {
         // The original function
         #original_function
@@ -190,7 +161,6 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
         // Submit the function info to inventory directly
         ::inventory::submit! {
             {
-                const ALIASES: [&str; #alias_count] = [#(#alias_literals),*];
                 const ARGS: [::appentry::ArgInfo; #arg_count] = [
                     #(
                         ::appentry::ArgInfo::new_with_desc(
@@ -202,7 +172,6 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
                 ];
                 ::appentry::FunctionInfo::new_with_desc(
                     #fn_name_literal,
-                    &ALIASES,
                     #func_desc,
                     &ARGS,
                     #wrapper_fn_name as fn(&mut std::collections::HashMap<String, Option<String>>) -> anyhow::Result<()>

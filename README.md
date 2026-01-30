@@ -17,7 +17,7 @@ fn add(x: i32, y: i32) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    appentry::dispatch()?;
+    appentry::dispatch(true)?;
     Ok(())
 }
 
@@ -25,8 +25,8 @@ fn main() -> anyhow::Result<()> {
 $ myapp --help
 Usage: appentry.exe [Options]
 Options:
-    -x, --x <i32>
-    -y, --y <i32>
+    -x|--x <i32>
+    -y|--y <i32>
 
 $ myapp -x 1 -y 2
 3
@@ -41,7 +41,7 @@ Multiple methods and docs:
 /// # Arguments
 ///
 /// This function takes no arguments
-#[appentry::appentry(["-v", "--version"])]
+#[appentry::appentry]
 fn version() {
     println!(
         "{} {}",
@@ -56,27 +56,27 @@ fn version() {
 ///
 /// * `x` - The first number to add
 /// * `y` -
-#[appentry::appentry(["-a", "--add"])]
+#[appentry::appentry]
 fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
-    appentry::dispatch()?;
+    appentry::dispatch(true)?;
     Ok(())
 }
 
 /*
 $ myapp --help
 Desc:  Add two numbers
-Usage: appentry.exe -a/--add [Options]
+Usage: appentry.exe -a|--add [Options]
 Options:
-    -x, --x <i32> The first number to add
-    -y, --y <i32>
+    -x|--x <i32> The first number to add
+    -y|--y <i32>
 
 Desc:  Print the application version
-Usage: appentry.exe -v/--version
+Usage: appentry.exe -v|--version
 
 $ myapp --version
 myapp 0.1.0

@@ -3,7 +3,7 @@
 /// # Arguments
 ///
 /// This function takes no arguments
-#[appentry::appentry(["-v", "--version"])]
+#[appentry::appentry]
 fn version() {
     println!(
         "{} {}",
@@ -18,13 +18,13 @@ fn version() {
 ///
 /// * `x` - The first number to add
 /// * `y` -
-#[appentry::appentry(["-a", "--add"])]
+#[appentry::appentry]
 fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
-    appentry::dispatch()?;
+    appentry::dispatch(true)?;
     Ok(())
 }

@@ -1,6 +1,6 @@
 [package]
 name = "appentry"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -15,8 +15,8 @@ exclude = ["src/main.rs"]
 
 [dependencies]
 anyhow = "1.0.100"
-appentry-derive = "0.1.0" # path = "../appentry-derive"
+appentry-derive = { version = "0.1.2", path = "../appentry-derive" }
 inventory = "0.3.21"
 
-# cargo publish -p appentry-macro --allow-dirty --registry crates-io
+# cargo publish -p appentry-derive --allow-dirty --registry crates-io
 # cargo publish -p appentry --allow-dirty --registry crates-io
