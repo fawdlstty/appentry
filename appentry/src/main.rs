@@ -19,12 +19,13 @@ fn version() {
 /// * `x` - The first number to add
 /// * `y` -
 #[appentry::appentry]
-fn add(x: i32, y: i32) -> anyhow::Result<()> {
+async fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    appentry::dispatch(true)?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    appentry::dispatch_async(true).await?;
     Ok(())
 }

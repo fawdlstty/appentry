@@ -33,7 +33,7 @@ $ myapp -x 1 -y 2
 */
 ```
 
-Multiple methods and docs:
+Multiple methods & async & docs:
 
 ```rust
 /// Print the application version
@@ -55,15 +55,16 @@ fn version() {
 /// # Arguments
 ///
 /// * `x` - The first number to add
-/// * `y` -
+/// * `y` - The second number to add
 #[appentry::appentry]
-fn add(x: i32, y: i32) -> anyhow::Result<()> {
+async fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    appentry::dispatch(true)?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    appentry::dispatch_async(true).await?;
     Ok(())
 }
 
@@ -73,7 +74,7 @@ Desc:  Add two numbers
 Usage: appentry.exe -a|--add [Options]
 Options:
     -x|--x <i32> The first number to add
-    -y|--y <i32>
+    -y|--y <i32> The second number to add
 
 Desc:  Print the application version
 Usage: appentry.exe -v|--version

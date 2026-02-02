@@ -113,6 +113,25 @@ pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // Generate parameter extraction for async context (to avoid lifetime issues)
+    let async_param_processing: Vec<proc_macro2::TokenStream> = inputs_with_names
+        .iter()
+        .map(|(arg_ident, _ty, short_arg, long_arg, is_bool)| {
+            let short_arg_lit = syn::LitStr::new(short_arg, Span::call_site());
+            let long_arg_lit = syn::LitStr::new(long_arg, Span::call_site());
+            // For async context, we'll call the same function but in async context
+            if *is_bool {
+                quote! {
+                    let #arg_ident = ::appentry::get_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
+                }
+            } else {
+                quote! {
+                    let #arg_ident = ::appentry::get_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
+                }
+            }
+        })
+        .collect();
+
     let arg_refs: Vec<syn::Ident> = inputs_with_names
         .iter()
         .map(|(name, _, _, _, _)| name.clone())
@@ -133,17 +152,51 @@ pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
         false
     };
 
+    // Check if the original function is async
+    let is_async = fn_sig.asyncness.is_some();
+
     // Generate the inventory submission code
     let fn_name_literal = syn::LitStr::new(&fn_name, Span::call_site());
     let original_function = &input_fn;
 
-    let call_with_result_handling = if has_result_return {
+    // Define the wrapper function based on whether the original function is async
+    let wrapper_function_definition = if is_async {
+        let call_with_result_handling = match has_result_return {
+            true => quote! { #fn_ident(#(#arg_refs),*).await?; },
+            false => quote! { #fn_ident(#(#arg_refs),*).await; },
+        };
+        let async_wrapper = quote! {
+            fn #wrapper_fn_name(args: &mut std::collections::HashMap<String, Option<String>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>>>> {
+                #(#async_param_processing)* // Process parameters synchronously
+                Box::pin(async move {
+                    #call_with_result_handling
+                    Ok(())
+                })
+            }
+        };
+        async_wrapper
+    } else {
+        let call_with_result_handling = match has_result_return {
+            true => quote! { #fn_ident(#(#arg_refs),*)?; },
+            false => quote! { #fn_ident(#(#arg_refs),*); },
+        };
         quote! {
-            #fn_ident(#(#arg_refs),*)?;
+            fn #wrapper_fn_name(args: &mut std::collections::HashMap<String, Option<String>>) -> anyhow::Result<()> {
+                #(#param_processing)*
+                #call_with_result_handling
+                Ok(())
+            }
+        }
+    };
+
+    // Define the method type based on whether the original function is async
+    let method_type = if is_async {
+        quote! {
+            ::appentry::AppEntryMethod::Async(#wrapper_fn_name)
         }
     } else {
         quote! {
-            #fn_ident(#(#arg_refs),*);
+            ::appentry::AppEntryMethod::Sync(#wrapper_fn_name)
         }
     };
 
@@ -152,11 +205,7 @@ pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
         #original_function
 
         // Create a wrapper function to handle arguments
-        fn #wrapper_fn_name(args: &mut std::collections::HashMap<String, Option<String>>) -> anyhow::Result<()> {
-            #(#param_processing)*
-            #call_with_result_handling
-            Ok(())
-        }
+        #wrapper_function_definition
 
         // Submit the function info to inventory directly
         ::inventory::submit! {
@@ -170,11 +219,11 @@ pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
                         ),
                     )*
                 ];
-                ::appentry::FunctionInfo::new_with_desc(
+                ::appentry::FunctionInfo::new(
                     #fn_name_literal,
                     #func_desc,
                     &ARGS,
-                    #wrapper_fn_name as fn(&mut std::collections::HashMap<String, Option<String>>) -> anyhow::Result<()>
+                    #method_type
                 )
             }
         }

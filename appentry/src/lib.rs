@@ -1,35 +1,33 @@
 pub use appentry_derive::appentry;
 pub use inventory;
 
-use std::collections::HashMap;
+use core::panic;
+use std::{collections::HashMap, pin::Pin};
+
+pub type SyncMethod = fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>;
+pub type AsyncMethod =
+    fn(&mut HashMap<String, Option<String>>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>>;
+
+#[derive(Copy, Clone)]
+pub enum AppEntryMethod {
+    Sync(SyncMethod),
+    Async(AsyncMethod),
+}
 
 #[derive(Copy, Clone)]
 pub struct FunctionInfo {
     pub name: &'static str,
     pub desc: Option<&'static str>,
     pub args: &'static [ArgInfo],
-    pub method: fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>,
+    pub method: AppEntryMethod,
 }
 
 impl FunctionInfo {
     pub const fn new(
         name: &'static str,
-        args: &'static [ArgInfo],
-        method: fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>,
-    ) -> Self {
-        Self {
-            name,
-            desc: None,
-            args,
-            method,
-        }
-    }
-
-    pub const fn new_with_desc(
-        name: &'static str,
         desc: Option<&'static str>,
         args: &'static [ArgInfo],
-        method: fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>,
+        method: AppEntryMethod,
     ) -> Self {
         Self {
             name,
@@ -40,7 +38,20 @@ impl FunctionInfo {
     }
 
     pub fn invoke(&self, args: &mut HashMap<String, Option<String>>) -> anyhow::Result<()> {
-        (self.method)(args)
+        match self.method {
+            AppEntryMethod::Sync(method) => method(args),
+            AppEntryMethod::Async(_) => panic!("Cannot invoke async method in sync context"),
+        }
+    }
+
+    pub async fn invoke_async(
+        &self,
+        args: &mut HashMap<String, Option<String>>,
+    ) -> anyhow::Result<()> {
+        match self.method {
+            AppEntryMethod::Sync(method) => method(args),
+            AppEntryMethod::Async(method) => method(args).await,
+        }
     }
 }
 
@@ -239,6 +250,56 @@ pub fn dispatch(enable_short: bool) -> anyhow::Result<()> {
     }
 
     method.invoke(&mut arg_vals)?;
+
+    Ok(())
+}
+
+pub async fn dispatch_async(enable_short: bool) -> anyhow::Result<()> {
+    let mut methods: Vec<_> = inventory::iter::<FunctionInfo>.into_iter().collect();
+    let mut args: Vec<String> = std::env::args().collect();
+    let arg0 = args.remove(0);
+    if let Some(arg) = args.first()
+        && arg == "--help"
+    {
+        appentry_help(&arg0, &methods, enable_short);
+        return Ok(());
+    }
+
+    let method = match methods.len() {
+        0 => panic!("You should define #[appentry] macro in entry function"),
+        1 => methods.remove(0),
+        _ => {
+            let name = args.remove(0);
+            let mut item = None;
+            for method in methods.iter() {
+                if (&name[..2] == "--" && &name[2..] == method.name)
+                    || (enable_short && &name[..1] == "-" && &name[1..] == &method.name[..1])
+                {
+                    item = Some(method);
+                    break;
+                }
+            }
+            match item {
+                Some(item) => item,
+                None => {
+                    appentry_help(&arg0, &methods, enable_short);
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    let mut arg_vals = HashMap::new();
+    while !args.is_empty() {
+        let arg = args.remove(0);
+        let arg_val = match args.first() {
+            Some(v) if !v.starts_with('-') => Some(args.remove(0)),
+            _ => None,
+        };
+        arg_vals.insert(arg, arg_val);
+    }
+
+    method.invoke_async(&mut arg_vals).await?;
 
     Ok(())
 }
