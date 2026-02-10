@@ -5,7 +5,11 @@
 
 A minimalist command-line argument parsing library
 
-# Examples
+# Usage
+
+```shell
+cargo add appentry
+```
 
 Hello World:
 
@@ -56,7 +60,7 @@ fn version() {
 ///
 /// * `x` - The first number to add
 /// * `y` - The second number to add
-#[appentry::appentry]
+#[appentry::appentry(default)]
 async fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
@@ -71,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
 /*
 $ myapp --help
 Desc:  Add two numbers
-Usage: appentry.exe -a|--add [Options]
+Usage: appentry.exe [-a|--add] [Options]
 Options:
     -x|--x <i32> The first number to add
     -y|--y <i32> The second number to add

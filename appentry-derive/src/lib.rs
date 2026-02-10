@@ -3,9 +3,13 @@ use proc_macro2::Span;
 use quote::quote;
 
 #[proc_macro_attribute]
-pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_fn = syn::parse_macro_input!(input as syn::ItemFn);
     let fn_sig = &input_fn.sig;
+
+    // Parse macro arguments
+    let args_str = args.to_string();
+    let is_default = args_str.contains("default");
 
     // Extract function name
     let fn_name = fn_sig.ident.to_string();
@@ -221,6 +225,7 @@ pub fn appentry(_args: TokenStream, input: TokenStream) -> TokenStream {
                 ];
                 ::appentry::FunctionInfo::new(
                     #fn_name_literal,
+                    #is_default,
                     #func_desc,
                     &ARGS,
                     #method_type

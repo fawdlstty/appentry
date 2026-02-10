@@ -18,7 +18,7 @@ fn version() {
 ///
 /// * `x` - The first number to add
 /// * `y` -
-#[appentry::appentry]
+#[appentry::appentry(default)]
 async fn add(x: i32, y: i32) -> anyhow::Result<()> {
     println!("{}", x + y);
     Ok(())
