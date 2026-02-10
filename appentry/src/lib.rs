@@ -94,10 +94,12 @@ pub fn get_arg_from_name<T: std::str::FromStr + Default + 'static>(
     args: &mut HashMap<String, Option<String>>,
     names: &[&str],
 ) -> T {
+    let mut contains = false;
     let mut val = None;
     for name in names {
         if let Some(val1) = args.remove(*name) {
             val = val1;
+            contains = true;
         }
     }
     let is_bool = std::any::TypeId::of::<T>() == std::any::TypeId::of::<bool>();
@@ -109,7 +111,7 @@ pub fn get_arg_from_name<T: std::str::FromStr + Default + 'static>(
                 false => T::default(),
             },
         },
-        None => match is_bool {
+        None => match is_bool && contains {
             true => "true".parse::<T>().unwrap_or_default(),
             false => T::default(),
         },

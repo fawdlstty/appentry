@@ -212,7 +212,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
         #wrapper_function_definition
 
         // Submit the function info to inventory directly
-        ::inventory::submit! {
+        ::appentry::inventory::submit! {
             {
                 const ARGS: [::appentry::ArgInfo; #arg_count] = [
                     #(
