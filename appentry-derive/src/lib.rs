@@ -1,15 +1,30 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
+use syn::parse::Parser;
 
 #[proc_macro_attribute]
 pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
     let input_fn = syn::parse_macro_input!(input as syn::ItemFn);
     let fn_sig = &input_fn.sig;
 
-    // Parse macro arguments
-    let args_str = args.to_string();
-    let is_default = args_str.contains("default");
+    let parser = syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated;
+    let args = match parser.parse(args) {
+        Ok(args) => args,
+        Err(err) => return err.to_compile_error().into(),
+    };
+    let mut is_default = false;
+    let mut is_bare = false;
+    for arg in args {
+        if arg.is_ident("default") {
+            is_default = true;
+        } else if arg.is_ident("bare") {
+            is_bare = true;
+        } else {
+            let err = syn::Error::new_spanned(arg, "unsupported appentry argument");
+            return err.to_compile_error().into();
+        }
+    }
 
     // Extract function name
     let fn_name = fn_sig.ident.to_string();
@@ -94,17 +109,39 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
                     short_arg,
                     long_arg,
                     is_bool,
+                    is_vec_string_type(ty.as_ref()),
                 ));
             }
         }
     }
+    let vec_string_count = inputs_with_names
+        .iter()
+        .filter(|(_, _, _, _, _, is_vec_string)| *is_vec_string)
+        .count();
+    if vec_string_count > 1 {
+        let err = syn::Error::new_spanned(fn_sig, "only one Vec<String> argument is supported");
+        return err.to_compile_error().into();
+    }
+    if let Some((idx, _)) = inputs_with_names
+        .iter()
+        .enumerate()
+        .find(|(_, (_, _, _, _, _, is_vec_string))| *is_vec_string)
+        && idx + 1 != inputs_with_names.len()
+    {
+        let err = syn::Error::new_spanned(fn_sig, "Vec<String> must be the last argument");
+        return err.to_compile_error().into();
+    }
 
     let param_processing: Vec<proc_macro2::TokenStream> = inputs_with_names
         .iter()
-        .map(|(arg_ident, _, short_arg, long_arg, is_bool)| {
+        .map(|(arg_ident, _, short_arg, long_arg, is_bool, is_vec_string)| {
             let short_arg_lit = syn::LitStr::new(short_arg, Span::call_site());
             let long_arg_lit = syn::LitStr::new(long_arg, Span::call_site());
-            if *is_bool {
+            if *is_vec_string {
+                quote! {
+                    let #arg_ident = ::appentry::get_vec_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
+                }
+            } else if *is_bool {
                 // For boolean arguments, we can just check if the flag exists
                 quote! {
                     let #arg_ident = ::appentry::get_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
@@ -120,11 +157,15 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
     // Generate parameter extraction for async context (to avoid lifetime issues)
     let async_param_processing: Vec<proc_macro2::TokenStream> = inputs_with_names
         .iter()
-        .map(|(arg_ident, _ty, short_arg, long_arg, is_bool)| {
+        .map(|(arg_ident, _ty, short_arg, long_arg, is_bool, is_vec_string)| {
             let short_arg_lit = syn::LitStr::new(short_arg, Span::call_site());
             let long_arg_lit = syn::LitStr::new(long_arg, Span::call_site());
             // For async context, we'll call the same function but in async context
-            if *is_bool {
+            if *is_vec_string {
+                quote! {
+                    let #arg_ident = ::appentry::get_vec_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
+                }
+            } else if *is_bool {
                 quote! {
                     let #arg_ident = ::appentry::get_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
                 }
@@ -138,7 +179,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let arg_refs: Vec<syn::Ident> = inputs_with_names
         .iter()
-        .map(|(name, _, _, _, _)| name.clone())
+        .map(|(name, _, _, _, _, _)| name.clone())
         .collect();
 
     // Check if the return type is Result<_, _>
@@ -226,6 +267,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
                 ::appentry::FunctionInfo::new(
                     #fn_name_literal,
                     #is_default,
+                    #is_bare,
                     #func_desc,
                     &ARGS,
                     #method_type
@@ -259,6 +301,29 @@ fn extract_doc_comments(attrs: &[syn::Attribute]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn is_vec_string_type(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+    let Some(segment) = type_path.path.segments.last() else {
+        return false;
+    };
+    if segment.ident != "Vec" {
+        return false;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return false;
+    };
+    let Some(syn::GenericArgument::Type(syn::Type::Path(inner_type))) = args.args.first() else {
+        return false;
+    };
+    inner_type
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "String")
 }
 
 fn extract_param_description(doc_comments: &str, param_name: &str) -> Option<String> {
