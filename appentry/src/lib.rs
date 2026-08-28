@@ -2,7 +2,11 @@ pub use appentry_derive::appentry;
 pub use inventory;
 
 use core::panic;
+use std::io::Write;
 use std::{collections::HashMap, pin::Pin};
+
+use anstream::AutoStream;
+use anstyle::{AnsiColor, Color, Effects, Style};
 
 pub type SyncMethod = fn(&mut HashMap<String, Option<String>>) -> anyhow::Result<()>;
 pub type AsyncMethod =
@@ -180,9 +184,21 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
         })
         .max()
         .unwrap_or(0);
+    let header_style = Style::new()
+        .fg_color(Some(Color::Ansi(AnsiColor::Yellow)))
+        .effects(Effects::BOLD | Effects::UNDERLINE);
+    let literal_style = Style::new()
+        .fg_color(Some(Color::Ansi(AnsiColor::Green)))
+        .bold();
+    let placeholder_style = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan)));
+    let plain_style = Style::new();
+    let mut out = AutoStream::auto(std::io::stdout());
     for method in methods {
         if let Some(desc) = method.desc {
-            println!("Desc:  {desc}");
+            help_writeln(
+                &mut out,
+                &[("Desc:  ", &header_style), (desc, &plain_style)],
+            );
         }
         if method.is_bare {
             let method_name = match method.is_default {
@@ -208,9 +224,27 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                 .collect::<Vec<_>>()
                 .join(" ");
             if args.is_empty() {
-                println!("Usage: {arg0} {method_name}");
+                help_writeln(
+                    &mut out,
+                    &[
+                        ("Usage: ", &header_style),
+                        (arg0, &literal_style),
+                        (" ", &plain_style),
+                        (&method_name, &literal_style),
+                    ],
+                );
             } else {
-                println!("Usage: {arg0} {method_name} {args}");
+                help_writeln(
+                    &mut out,
+                    &[
+                        ("Usage: ", &header_style),
+                        (arg0, &literal_style),
+                        (" ", &plain_style),
+                        (&method_name, &literal_style),
+                        (" ", &plain_style),
+                        (&args, &placeholder_style),
+                    ],
+                );
             }
         } else {
             let lcch = method.name.chars().next().unwrap();
@@ -225,10 +259,27 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                 }
             };
             if method.args.is_empty() {
-                println!("Usage: {arg0} {method_name}");
+                help_writeln(
+                    &mut out,
+                    &[
+                        ("Usage: ", &header_style),
+                        (arg0, &literal_style),
+                        (" ", &plain_style),
+                        (&method_name, &literal_style),
+                    ],
+                );
             } else {
-                println!("Usage: {arg0} {method_name} [Options]");
-                println!("Options:");
+                help_writeln(
+                    &mut out,
+                    &[
+                        ("Usage: ", &header_style),
+                        (arg0, &literal_style),
+                        (" ", &plain_style),
+                        (&method_name, &literal_style),
+                        (" [Options]", &placeholder_style),
+                    ],
+                );
+                help_writeln(&mut out, &[("Options:", &header_style)]);
                 for arg in method.args.iter() {
                     let lcname = arg.name.to_lowercase();
                     let lcch = arg.name.chars().next().unwrap();
@@ -238,15 +289,30 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                         false => format!("    --{lcname} <{lctyname}>"),
                     };
                     if let Some(desc) = arg.desc {
-                        println!("{base:width$} {desc}");
+                        let base = format!("{base:width$}");
+                        help_writeln(
+                            &mut out,
+                            &[
+                                (&base, &literal_style),
+                                (" ", &plain_style),
+                                (desc, &plain_style),
+                            ],
+                        );
                     } else {
-                        println!("{base}");
+                        help_writeln(&mut out, &[(base.as_str(), &literal_style)]);
                     }
                 }
             }
         }
-        println!();
+        help_writeln(&mut out, &[("", &plain_style)]);
     }
+}
+
+fn help_writeln(out: &mut AutoStream<std::io::Stdout>, parts: &[(&str, &Style)]) {
+    for (text, style) in parts {
+        write!(out, "{}{text}{}", style.render(), style.render_reset()).ok();
+    }
+    writeln!(out).ok();
 }
 
 fn parse_method_args(
