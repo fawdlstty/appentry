@@ -136,6 +136,18 @@ pub fn get_vec_arg_from_name(
     Vec::new()
 }
 
+pub fn get_optional_string_arg_from_name(
+    args: &mut HashMap<String, Option<String>>,
+    names: &[&str],
+) -> Option<String> {
+    for name in names {
+        if let Some(val) = args.remove(*name) {
+            return val;
+        }
+    }
+    None
+}
+
 pub fn appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: bool) -> ! {
     print_appentry_help(arg0, methods, enable_short);
     std::process::exit(0);
@@ -183,6 +195,8 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                 .map(|arg| {
                     if is_vec_string_arg(arg) {
                         format!("<{}...>", arg.name.to_lowercase())
+                    } else if is_option_string_arg(arg) {
+                        format!("[<{}:string>]", arg.name.to_lowercase())
                     } else {
                         format!(
                             "<{}:{}>",
@@ -284,10 +298,18 @@ fn parse_bare_method_args(
         arg_vals.insert(format!("--{}", method.args[varargs_index].name), Some(rest));
         return Ok(arg_vals);
     }
-    if raw_args.len() != method.args.len() {
+    let optional_tail_count = method
+        .args
+        .iter()
+        .rev()
+        .take_while(|arg| is_option_string_arg(arg))
+        .count();
+    let required_count = method.args.len() - optional_tail_count;
+    if raw_args.len() < required_count || raw_args.len() > method.args.len() {
         anyhow::bail!(
-            "bare method '{}' expects {} arguments, got {}",
+            "bare method '{}' expects {} to {} arguments, got {}",
             method.name,
+            required_count,
             method.args.len(),
             raw_args.len()
         );
@@ -304,6 +326,13 @@ fn is_vec_string_arg(arg: &ArgInfo) -> bool {
     matches!(
         arg.type_name.replace(' ', "").as_str(),
         "Vec<String>" | "std::vec::Vec<String>" | "::std::vec::Vec<String>"
+    )
+}
+
+fn is_option_string_arg(arg: &ArgInfo) -> bool {
+    matches!(
+        arg.type_name.replace(' ', "").as_str(),
+        "Option<String>" | "std::option::Option<String>" | "::std::option::Option<String>"
     )
 }
 
@@ -462,6 +491,11 @@ mod tests {
         ArgInfo::new("command", "String"),
         ArgInfo::new("args", "Vec < String >"),
     ];
+    static OPTIONAL_ARGS: [ArgInfo; 3] = [
+        ArgInfo::new("service_name", "String"),
+        ArgInfo::new("project_id", "String"),
+        ArgInfo::new("robots", "Option < String >"),
+    ];
     static BARE_ADD: FunctionInfo = FunctionInfo::new(
         "add",
         false,
@@ -486,6 +520,14 @@ mod tests {
         true,
         None,
         &VARARGS_ARGS,
+        AppEntryMethod::Sync(noop),
+    );
+    static OPTIONAL_DEPLOY: FunctionInfo = FunctionInfo::new(
+        "deploy",
+        false,
+        true,
+        None,
+        &OPTIONAL_ARGS,
         AppEntryMethod::Sync(noop),
     );
 
@@ -525,6 +567,31 @@ mod tests {
         assert_eq!(
             get_vec_arg_from_name(&mut args.clone(), &["--args"]),
             vec!["gzgy".to_string(), "1~2".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_bare_method_args_allows_optional_string_tail() {
+        let args =
+            parse_bare_method_args(&OPTIONAL_DEPLOY, vec!["as".to_string(), "gzgy".to_string()])
+                .unwrap();
+
+        assert_eq!(args.get("--service_name"), Some(&Some("as".to_string())));
+        assert_eq!(args.get("--project_id"), Some(&Some("gzgy".to_string())));
+        assert_eq!(
+            get_optional_string_arg_from_name(&mut args.clone(), &["--robots"]),
+            None
+        );
+
+        let args = parse_bare_method_args(
+            &OPTIONAL_DEPLOY,
+            vec!["ds".to_string(), "gzgy".to_string(), "1~2".to_string()],
+        )
+        .unwrap();
+
+        assert_eq!(
+            get_optional_string_arg_from_name(&mut args.clone(), &["--robots"]),
+            Some("1~2".to_string())
         );
     }
 

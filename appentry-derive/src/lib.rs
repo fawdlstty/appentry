@@ -109,6 +109,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
                     short_arg,
                     long_arg,
                     is_bool,
+                    is_option_string_type(ty.as_ref()),
                     is_vec_string_type(ty.as_ref()),
                 ));
             }
@@ -116,7 +117,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     let vec_string_count = inputs_with_names
         .iter()
-        .filter(|(_, _, _, _, _, is_vec_string)| *is_vec_string)
+        .filter(|(_, _, _, _, _, _, is_vec_string)| *is_vec_string)
         .count();
     if vec_string_count > 1 {
         let err = syn::Error::new_spanned(fn_sig, "only one Vec<String> argument is supported");
@@ -125,7 +126,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
     if let Some((idx, _)) = inputs_with_names
         .iter()
         .enumerate()
-        .find(|(_, (_, _, _, _, _, is_vec_string))| *is_vec_string)
+        .find(|(_, (_, _, _, _, _, _, is_vec_string))| *is_vec_string)
         && idx + 1 != inputs_with_names.len()
     {
         let err = syn::Error::new_spanned(fn_sig, "Vec<String> must be the last argument");
@@ -134,12 +135,16 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let param_processing: Vec<proc_macro2::TokenStream> = inputs_with_names
         .iter()
-        .map(|(arg_ident, _, short_arg, long_arg, is_bool, is_vec_string)| {
+        .map(|(arg_ident, _, short_arg, long_arg, is_bool, is_option_string, is_vec_string)| {
             let short_arg_lit = syn::LitStr::new(short_arg, Span::call_site());
             let long_arg_lit = syn::LitStr::new(long_arg, Span::call_site());
             if *is_vec_string {
                 quote! {
                     let #arg_ident = ::appentry::get_vec_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
+                }
+            } else if *is_option_string {
+                quote! {
+                    let #arg_ident = ::appentry::get_optional_string_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
                 }
             } else if *is_bool {
                 // For boolean arguments, we can just check if the flag exists
@@ -157,13 +162,17 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
     // Generate parameter extraction for async context (to avoid lifetime issues)
     let async_param_processing: Vec<proc_macro2::TokenStream> = inputs_with_names
         .iter()
-        .map(|(arg_ident, _ty, short_arg, long_arg, is_bool, is_vec_string)| {
+        .map(|(arg_ident, _ty, short_arg, long_arg, is_bool, is_option_string, is_vec_string)| {
             let short_arg_lit = syn::LitStr::new(short_arg, Span::call_site());
             let long_arg_lit = syn::LitStr::new(long_arg, Span::call_site());
             // For async context, we'll call the same function but in async context
             if *is_vec_string {
                 quote! {
                     let #arg_ident = ::appentry::get_vec_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
+                }
+            } else if *is_option_string {
+                quote! {
+                    let #arg_ident = ::appentry::get_optional_string_arg_from_name(args, &[#short_arg_lit, #long_arg_lit]);
                 }
             } else if *is_bool {
                 quote! {
@@ -179,7 +188,7 @@ pub fn appentry(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let arg_refs: Vec<syn::Ident> = inputs_with_names
         .iter()
-        .map(|(name, _, _, _, _, _)| name.clone())
+        .map(|(name, _, _, _, _, _, _)| name.clone())
         .collect();
 
     // Check if the return type is Result<_, _>
@@ -311,6 +320,29 @@ fn is_vec_string_type(ty: &syn::Type) -> bool {
         return false;
     };
     if segment.ident != "Vec" {
+        return false;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return false;
+    };
+    let Some(syn::GenericArgument::Type(syn::Type::Path(inner_type))) = args.args.first() else {
+        return false;
+    };
+    inner_type
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "String")
+}
+
+fn is_option_string_type(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+    let Some(segment) = type_path.path.segments.last() else {
+        return false;
+    };
+    if segment.ident != "Option" {
         return false;
     }
     let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
