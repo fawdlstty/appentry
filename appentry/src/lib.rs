@@ -187,6 +187,10 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
     let header_style = Style::new()
         .fg_color(Some(Color::Ansi(AnsiColor::Yellow)))
         .effects(Effects::BOLD | Effects::UNDERLINE);
+    // 头部分隔符（": "）不带下划线，下划线只压在标题单词上
+    let header_sep_style = Style::new()
+        .fg_color(Some(Color::Ansi(AnsiColor::Yellow)))
+        .effects(Effects::BOLD);
     let literal_style = Style::new()
         .fg_color(Some(Color::Ansi(AnsiColor::Green)))
         .bold();
@@ -197,14 +201,14 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
         if let Some(desc) = method.desc {
             help_writeln(
                 &mut out,
-                &[("Desc:  ", &header_style), (desc, &plain_style)],
+                &[
+                    ("Desc", &header_style),
+                    (":  ", &header_sep_style),
+                    (desc, &plain_style),
+                ],
             );
         }
         if method.is_bare {
-            let method_name = match method.is_default {
-                true => format!("[{}]", method.name),
-                false => method.name.to_string(),
-            };
             let args = method
                 .args
                 .iter()
@@ -223,29 +227,21 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
-            if args.is_empty() {
-                help_writeln(
-                    &mut out,
-                    &[
-                        ("Usage: ", &header_style),
-                        (arg0, &literal_style),
-                        (" ", &plain_style),
-                        (&method_name, &literal_style),
-                    ],
-                );
-            } else {
-                help_writeln(
-                    &mut out,
-                    &[
-                        ("Usage: ", &header_style),
-                        (arg0, &literal_style),
-                        (" ", &plain_style),
-                        (&method_name, &literal_style),
-                        (" ", &plain_style),
-                        (&args, &placeholder_style),
-                    ],
-                );
+            // 默认入口不带子命令名直接运行，Usage 只写程序名（`Usage: robot`）
+            let mut parts: Vec<(&str, &Style)> = vec![
+                ("Usage", &header_style),
+                (": ", &header_sep_style),
+                (arg0, &literal_style),
+            ];
+            if !method.is_default {
+                parts.push((" ", &plain_style));
+                parts.push((method.name, &literal_style));
             }
+            if !args.is_empty() {
+                parts.push((" ", &plain_style));
+                parts.push((args.as_str(), &placeholder_style));
+            }
+            help_writeln(&mut out, &parts);
         } else {
             let lcch = method.name.chars().next().unwrap();
             let method_name = {
@@ -262,7 +258,8 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                 help_writeln(
                     &mut out,
                     &[
-                        ("Usage: ", &header_style),
+                        ("Usage", &header_style),
+                        (": ", &header_sep_style),
                         (arg0, &literal_style),
                         (" ", &plain_style),
                         (&method_name, &literal_style),
@@ -272,14 +269,21 @@ fn print_appentry_help(arg0: &str, methods: &Vec<&FunctionInfo>, enable_short: b
                 help_writeln(
                     &mut out,
                     &[
-                        ("Usage: ", &header_style),
+                        ("Usage", &header_style),
+                        (": ", &header_sep_style),
                         (arg0, &literal_style),
                         (" ", &plain_style),
                         (&method_name, &literal_style),
                         (" [Options]", &placeholder_style),
                     ],
                 );
-                help_writeln(&mut out, &[("Options:", &header_style)]);
+                help_writeln(
+                    &mut out,
+                    &[
+                        ("Options", &header_style),
+                        (":", &header_sep_style),
+                    ],
+                );
                 for arg in method.args.iter() {
                     let lcname = arg.name.to_lowercase();
                     let lcch = arg.name.chars().next().unwrap();
